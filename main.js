@@ -1,5 +1,15 @@
 import { Niivue, NVMeshUtilities } from '@niivue/niivue'
-import { Niimath } from "@niivue/niimath"
+import {
+  antiAliasCuberille,
+  setPipelinesBaseUrl as setCuberillePipelinesUrl
+} from "@itk-wasm/cuberille"
+import {
+  repair,
+  smoothRemesh,
+  keepLargestComponent,
+  setPipelinesBaseUrl as setMeshFiltersPipelinesUrl,
+} from "@itk-wasm/mesh-filters"
+import { nii2iwi, iwm2meshCore } from "@niivue/cbor-loader"
 
 function formatNumber(value) {
   if (Math.abs(value) >= 1) {
@@ -11,9 +21,13 @@ function formatNumber(value) {
   }
 }
 
+// Use local, vendored WebAssembly module assets
+const viteBaseUrl = import.meta.env.BASE_URL
+const pipelinesBaseUrl = new URL(`${viteBaseUrl}pipelines`, document.location.origin).href
+setCuberillePipelinesUrl(pipelinesBaseUrl)
+setMeshFiltersPipelinesUrl(pipelinesBaseUrl)
+
 async function main() {
-  const niimath = new Niimath()
-  await niimath.init()
   const loadingCircle = document.getElementById('loadingCircle')
   let startTime = null
   saveBtn.onclick = function () {
@@ -54,98 +68,64 @@ async function main() {
     if (nv1.meshes.length < 1) {
       return
     }
-    let format = 'obj'
+    let format = "obj"
     if (formatSelect.selectedIndex === 0) {
-      format = 'mz3'
+      format = "mz3"
     }
     if (formatSelect.selectedIndex === 2) {
-      format = 'stl'
+      format = "stl"
     }
+    const scale = 1 / Number(scaleSelect.value)
     const pts = nv1.meshes[0].pts.slice()
-    for (let i = 0; i < pts.length; i++)
-      pts[i] *= 0.5
+    for (let i = 0; i < pts.length; i++) pts[i] *= scale
     NVMeshUtilities.saveMesh(pts, nv1.meshes[0].tris, `mesh.${format}`, true)
   }
-  remeshBtn.onclick = function () {
+  createMeshBtn.onclick = function () {
+    if (nv1.meshes.length > 0) nv1.removeMesh(nv1.meshes[0])
     if (nv1.volumes.length < 1) {
-      window.alert('No voxel-based image open for meshing. Drag and drop an image.')
+      window.alert("Image not loaded. Drag and drop an image.")
     } else {
       remeshDialog.show()
     }
   }
-  simplifyBtn.onclick = function () {
-    if (nv1.meshes.length < 1) {
-      window.alert('No mesh open to simplify. Drag and drop a mesh or create a mesh from a voxel based image.')
-    } else {
-      simplifyDialog.show()
-    }
-  }
-  applySimpleBtn.onclick = async function () {
-    if (nv1.meshes.length < 1) {
-      console.log('No mesh open to simplify.')
-      return
-    }
-    startTime = Date.now()
-    let reduce = Math.min(Math.max(Number(shrinkSimplePct.value) / 100, 0.01), 1)
-    if ((reduce <= 0.0) || (reduce >= 1))
-      return
-    const verts = nv1.meshes[0].pts.slice()
-    const tris = nv1.meshes[0].tris.slice()
-    const meshBuffer = NVMeshUtilities.createMZ3(verts, tris, false)
-    loadingCircle.classList.remove('hidden')
-    const meshFile = new File([meshBuffer], 'mesh.mz3')
-    const retBlob = await niimath.image(meshFile)
-    .mesh({
-      r: reduce
-    })
-    .run('test.mz3')
-    const arrayBuffer = await retBlob.arrayBuffer()
-    loadingCircle.classList.add('hidden')
-    if (nv1.meshes.length > 0)
-      nv1.removeMesh(nv1.meshes[0])
-    await nv1.loadFromArrayBuffer(arrayBuffer, 'test.mz3')
-  }
   applyBtn.onclick = async function () {
-    startTime = Date.now()
-    const niiBuffer = await nv1.saveImage({volumeByIndex: nv1.volumes.length - 1}).buffer
-    const niiFile = new File([niiBuffer], 'image.nii')
-    let processor = niimath.image(niiFile)
-    loadingCircle.classList.remove('hidden')
-    //mesh with specified isosurface
+    const volIdx = nv1.volumes.length - 1
+    loadingCircle.classList.remove("hidden")
+    meshProcessingMsg.classList.remove("hidden")
+    meshProcessingMsg.textContent = "Generating mesh from segmentation"
+    const hdr = nv1.volumes[volIdx].hdr
+    const img = nv1.volumes[volIdx].img
+    const itkImage = nii2iwi(hdr, img, false)
+    itkImage.size = itkImage.size.map(Number)
     const isoValue = Number(isoNumber.value)
-    //const largestCheckValue = largestCheck.checked
-    let reduce = Math.min(Math.max(Number(shrinkPct.value) / 100, 0.01), 1)
-    let hollowSz = Number(hollowSelect.value )
-    let closeSz = Number(closeMM.value)
-    const pixDim = Math.min(Math.min(nv1.volumes[0].hdr.pixDims[1],nv1.volumes[0].hdr.pixDims[2]), nv1.volumes[0].hdr.pixDims[3])
-    if ((pixDim < 0.2) && ((hollowSz !== 0) || (closeSz !== 0))) {
-      hollowSz *= pixDim
-      closeSz *= pixDim
-      console.log('Very small pixels, scaling hollow and close values by ', pixDim)
-    }
-    if (hollowSz < 0) {
-      processor = processor.hollow(0.5, hollowSz)
-    }
-      // ops = " -hollow 0.5 "+hollowSz + ' '+ ops
-    if ((isFinite(closeSz)) && (closeSz > 0)){
-      processor = processor.close(isoValue, closeSz, 2 * closeSz)
-      // ops = " -close " + isoValue + " "+closeSz + ' ' + 2 * closeSz + ' '+ ops
-    }
-    processor = processor.mesh({
-      i: isoValue,
-      l: largestCheck.checked ? 1 : 0,
-      r: reduce,
-      b: bubbleCheck.checked ? 1 : 0
-    })
-    console.log('niimath operation', processor.commands)
-    const retBlob = await processor.run('test.mz3')
-    const arrayBuffer = await retBlob.arrayBuffer()
-    loadingCircle.classList.add('hidden')
-    if (nv1.meshes.length > 0)
+    console.log(`volume ${volIdx} dimensions ${itkImage.size} with iso-value ${isoValue}`)
+    console.log(itkImage)
+    const { mesh } = await antiAliasCuberille(itkImage, { noClosing: true })
+    meshProcessingMsg.textContent = "Generating manifold"
+    const { outputMesh: repairedMesh } = await repair(mesh, { maximumHoleArea: 50.0 })
+    meshProcessingMsg.textContent = "Keep largest mesh component"
+    const { outputMesh: largestOnly } = await keepLargestComponent(repairedMesh)
+    while (nv1.meshes.length > 0) {
       nv1.removeMesh(nv1.meshes[0])
-    await nv1.loadFromArrayBuffer(arrayBuffer, 'test.mz3')
-    //nv1.reverseFaces(0)
+     }
+    const initialNiiMesh = iwm2meshCore(largestOnly)
+    const initialNiiMeshBuffer = NVMeshUtilities.createMZ3(initialNiiMesh.positions, initialNiiMesh.indices, false)
+    await nv1.loadFromArrayBuffer(initialNiiMeshBuffer, 'trefoil.mz3')
+    saveMeshBtn.disabled = false
+    meshProcessingMsg.textContent = "Smoothing and remeshing"
+    const smooth = parseInt(smoothSlide.value)
+    const shrink = parseFloat(shrinkPct.value)
+    const { outputMesh: smoothedMesh } = await smoothRemesh(largestOnly, { newtonIterations: smooth, numberPoints: shrink })
+    const niiMesh = iwm2meshCore(smoothedMesh)
+    loadingCircle.classList.add("hidden")
+    meshProcessingMsg.classList.add("hidden")
+    while (nv1.meshes.length > 0) {
+      nv1.removeMesh(nv1.meshes[0])
+    }
+    const meshBuffer = NVMeshUtilities.createMZ3(niiMesh.positions, niiMesh.indices, false)
+    await nv1.loadFromArrayBuffer(meshBuffer, 'trefoil.mz3')
   }
+
   visibleCheck.onchange = function () {
     nv1.setMeshProperty(nv1.meshes[0].id, 'visible', this.checked)
   }
@@ -173,7 +153,8 @@ async function main() {
   const nv1 = new Niivue(defaults)
   nv1.attachToCanvas(gl1)
   nv1.isAlphaClipDark = true
-  function imageStatus() {
+  nv1.onImageLoaded = () => {
+    saveBtn.disabled = true
     const otsu = nv1.findOtsu(3)
     isoLabel.textContent =
       'Isosurface Threshold (' +
@@ -185,9 +166,7 @@ async function main() {
     const str = `Image has ${nv1.volumes[0].dims[1]}×${nv1.volumes[0].dims[2]}×${nv1.volumes[0].dims[3]} voxels`
     document.getElementById('location').innerHTML = str
     nv1.setSliceType(nv1.sliceTypeMultiplanar)
-  }
-  nv1.onImageLoaded = () => {
-    imageStatus()
+    console.log('ct2print 20241218 intensity range ' + isoLabel.textContent + ' threshold ' + isoNumber.value)
   }
   nv1.setClipPlane([0.1, 0, 120])
   nv1.opts.dragMode = nv1.dragModes.pan
@@ -196,8 +175,6 @@ async function main() {
   nv1.opts.yoke3Dto2DZoom = true
   nv1.setInterpolation(true)
   await nv1.loadVolumes([{ url: './tinyT1.nii.gz' }])
-  imageStatus()
-  await applyBtn.onclick()
 }
 
 main()
