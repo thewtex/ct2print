@@ -9,18 +9,15 @@ A basic example of converting a voxel-based image to a simplified mesh. This int
 ### Usage
 
 1. Open the [live demo](https://niivue.github.io/ct2print/).
-2. **Option 1** Use the `Volume` pull-down menu to select an image.
-3. **Option 2** If your image is in NIfTI format, drag and drop the file onto the web page.
-4. **Option 3** If your image is in DICOM format, use the `Select DICOM` button to import your image.
+2. **Option 1** The web page automatically loads with a default T1 MRI scan. If you want to use this scan, go to step 5.
+3. **Option 2** If your T1 MRI scan is in NIfTI format, drag and drop the file onto the web page.
+4. **Option 3** If your image is in DICOM format, it may load if you drag and drop the files. If this fails, convert your images with [dcm2niix](https://niivue.github.io/niivue-dcm2niix/) and save the result as a NIfTI format file that brain2print can open.
 5. Note when you click on the image, the voxel intensity is shown in the status bar at the bottom-left of the web page. You can decide a nice intensity threshold to segment your image (e.g. for a CT scan, bone will be brighter than soft tissue).
 6. Press the `Create Mesh` button and select your preferred settings: 
 ![settings dialog](settings.png)
- - The [Isosurface](https://en.wikipedia.org/wiki/Marching_cubes) is the voxel intensity used to discriminate the mesh surface. See the previous step for detials. By default, this value is set to the [Otsu threshold](https://en.wikipedia.org/wiki/Otsu%27s_method).
- - [Closing](https://en.wikipedia.org/wiki/Closing_(morphology)) removes small crevices and cavities in your mesh which can plague printing.
- - Fill bubbles will remove any cavities, this includes large cavities for example the ventricles for a brain scan.
- - The `Largest cluster only` will only extract a single mesh. For example, with the `Iguana` demo this extracts only the skull without the [scleral rings](https://en.wikipedia.org/wiki/Scleral_Ring).
- - You can choose `Smoothing` to make the surfaces less jagged (note this can create self intersecting triangles that can confound some printers).
- - You can choose to `Simplify` [reduce the number of triangles](https://github.com/sp4cerat/Fast-Quadric-Mesh-Simplification) to create smaller files (note this can create self intersecting triangles that can confound some printers).
+  - The [Isosurface Threshold](https://en.wikipedia.org/wiki/Marching_cubes) is the voxel intensity used to discriminate the mesh surface. See the previous step for detials. By default, this value is set to the [Otsu threshold](https://en.wikipedia.org/wiki/Otsu%27s_method).
+  - You can choose `Smoothing` to make the surfaces less jagged at the expense of computation time.
+  - You can choose to `Simplify` to reduce the number of triangles and create smaller files.
 7. Once you have set your preferences, press `Apply`.
 8. You will see the mesh appear and can interactively view it. If you are unhappy with the result, repeat step 6 with different settings. If you want to print the results, press the `Save Mesh` button.
 
@@ -36,17 +33,9 @@ npm install
 npm run dev
 ```
 
-### Links
-
- - [Will Usher](https://github.com/Twinklebear/webgl-marching-cubes) ported [Marching Cubes](https://paulbourke.net/geometry/polygonise/) to JavaScript.
- - This project includes a pure JavaScript port of Sven Forstmann's [Fast Quadric Mesh Simplification](https://github.com/sp4cerat/Fast-Quadric-Mesh-Simplification)
- - [Tim Knip](https://github.com/timknip/mesh-decimate/tree/master) provides a ThreeJS project that provides both WASM and native JavaScript mesh decimation. Try the [live demo](https://neurolabusc.github.io/simplifyjs/).
-
-
 ## References
 
-### Our group's open source software used in this applicaiton
+This web page combines three packages developed by our team:
 
-- [brainchop](https://github.com/neuroneural/brainchop)
-- [niivue](https://github.com/niivue/niivue)
-- [niimath](https://github.com/rordenlab/niimath)
+ - [niivue](https://github.com/niivue/niivue) reading images and visualization
+ - [ITK-Wasm](https://github.com/InsightSoftwareConsortium/ITK-Wasm) for voxel-to-mesh and mesh processing
