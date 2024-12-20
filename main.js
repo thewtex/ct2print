@@ -96,6 +96,8 @@ async function main() {
     loadingCircle.classList.remove("hidden");
     meshProcessingMsg.classList.remove("hidden");
     meshProcessingMsg.textContent = "Generating mesh from segmentation";
+    nv1.volumes[volIdx].calculateRAS();
+    nv1.volumes[volIdx].img2RAS();
     const hdr = nv1.volumes[volIdx].hdr;
     const img = nv1.volumes[volIdx].img;
     const itkImage = nii2iwi(hdr, img, false);
