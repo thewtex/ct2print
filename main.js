@@ -61,14 +61,10 @@ async function main() {
     if (nv1.volumes.length > 0) {
       nv1.removeVolumeByIndex(0);
     }
-    if (volumeSelect.selectedIndex > 5) {
-      nv1.loadMeshes([{ url: fnm }]);
-    } else {
-      if (!fnm.endsWith(".mgz")) {
-        fnm += ".nii.gz";
-      }
-      nv1.loadVolumes([{ url: fnm }]);
+    if (!fnm.endsWith(".mgz")) {
+      fnm += ".nii.gz";
     }
+    nv1.loadVolumes([{ url: fnm }]);
   };
   applySaveBtn.onclick = function () {
     if (nv1.meshes.length < 1) {
@@ -96,9 +92,27 @@ async function main() {
   };
   applyBtn.onclick = async function () {
     const volIdx = nv1.volumes.length - 1;
-    const isoValue = Number(isoNumber.value);
-    let hdr = nv1.volumes[volIdx].hdr;
-    let img = nv1.volumes[volIdx].img;
+    let hdr = nv1.volumes[volIdx].hdr2RAS();
+    let img = nv1.volumes[volIdx].img2RAS();
+    // itk ignores scale slope and intercept, so convert isosurface threshold to raw units
+    let isoValue = Number(isoNumber.value);
+    if (hdr.scl_slope !== 0) {
+        isoValue =  (isoValue - hdr.scl_inter) / hdr.scl_slope;
+    }
+    console.log(` slope ${hdr.scl_slope} intercept ${hdr.scl_inter} raw threshold ${isoValue}`)
+    hdr.scl_slope = 1
+    hdr.scl_inter = 0
+    // check isosurface is not too bright or dark
+    let mn = img[0]
+    let mx = img[0]
+    for (let i = 0; i < img.length; i++) {
+        mn = Math.min(mn, img[i])
+        mx = Math.max(mx, img[i])
+    }
+    if ((isoValue > mx) || (isoValue < mn)) {
+        alert("specified isovalue threshold outside intensity range of image.");
+        return
+    }
     let hollowInt = Number(hollowSelect.value )
     if (hollowInt < 0){
       const vol = nv1.volumes[volIdx]
@@ -198,11 +212,13 @@ async function main() {
     onLocationChange: handleLocationChange,
     backColor: [1, 1, 1, 1],
     show3Dcrosshair: true,
+    //n.b. we could set "limitFrames4D: 1"
   };
   const nv1 = new Niivue(defaults);
   nv1.attachToCanvas(gl1);
   nv1.isAlphaClipDark = true;
   nv1.onImageLoaded = () => {
+    const volIdx = nv1.volumes.length - 1;
     saveBtn.disabled = true;
     const otsu = nv1.findOtsu(3);
     isoLabel.textContent =
