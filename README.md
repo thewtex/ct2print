@@ -16,6 +16,7 @@ A basic example of converting a voxel-based image to a simplified mesh. This int
 6. Press the `Create Mesh` button and select your preferred settings: 
 ![settings dialog](settings.png)
   - The [Isosurface Threshold](https://en.wikipedia.org/wiki/Marching_cubes) is the voxel intensity used to discriminate the mesh surface. See the previous step for detials. By default, this value is set to the [Otsu threshold](https://en.wikipedia.org/wiki/Otsu%27s_method).
+  - The Hollow pull-down menu allows you to create a solid object, or a hollow one that uses less materials (but requires an escape hole).
   - You can choose `Smoothing` to make the surfaces less jagged at the expense of computation time.
   - You can choose to `Simplify` to reduce the number of triangles and create smaller files.
 7. Once you have set your preferences, press `Apply`.
@@ -37,5 +38,6 @@ npm run dev
 
 This web page combines three packages developed by our team:
 
- - [niivue](https://github.com/niivue/niivue) reading images and visualization
- - [ITK-Wasm](https://github.com/InsightSoftwareConsortium/ITK-Wasm) for voxel-to-mesh and mesh processing
+- [niimath](https://github.com/rordenlab/niimath) for creating hollow objects. [Citation](https://pubmed.ncbi.nlm.nih.gov/39268148/).
+- [niivue](https://github.com/niivue/niivue) reading images and visualization.
+- [ITK-Wasm](https://github.com/InsightSoftwareConsortium/ITK-Wasm) for voxel-to-mesh and mesh processing. [Citation](https://proceedings.scipy.org/articles/TCFJ5130.
