@@ -34,7 +34,11 @@ npm install
 npm run dev
 ```
 
-## References
+### Alternatives
+
+ct2print makes a mesh from the brightest voxels in the image. This works well for extracting the brightest tissues - for example bone from computerized axial tomography. However, if your iamge is a T1-weighted MRI scan of the head, you may prefer [brain2print](https://github.com/niivue/brain2print) which uses AI methods to segment brain tissue.
+
+### References
 
 This web page combines three packages developed by our team:
 
