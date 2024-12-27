@@ -34,6 +34,7 @@ setMeshFiltersPipelinesUrl(pipelinesBaseUrl)
 async function main() {
   const niimath = new Niimath()
   await niimath.init()
+  niimath.setOutputDataType('input') // call before setting image since this is passed to the image constructor
   const loadingCircle = document.getElementById("loadingCircle")
   let startTime = null
   saveBtn.onclick = function () {
@@ -50,7 +51,7 @@ async function main() {
     const selectedOption = volumeSelect.options[volumeSelect.selectedIndex]
     const txt = selectedOption.text
     let fnm = "./" + txt
-    if (volumeSelect.selectedIndex > 4) {
+    if (volumeSelect.selectedIndex > 6) {
       fnm = "https://niivue.github.io/niivue/images/" + txt
     } else if (volumeSelect.selectedIndex > 1) {
       fnm = "https://niivue.github.io/niivue-demo-images/" + txt
@@ -64,6 +65,7 @@ async function main() {
     if (!fnm.endsWith(".mgz")) {
       fnm += ".nii.gz"
     }
+    console.log(volumeSelect.selectedIndex, fnm)
     nv1.loadVolumes([{ url: fnm }])
   }
   applySaveBtn.onclick = function () {
@@ -90,10 +92,68 @@ async function main() {
       remeshDialog.show()
     }
   }
+  qualitySelect.onchange = function () {
+    const isBetterQuality = Boolean(Number(qualitySelect.value))
+    const opacity = 1.0 - (0.5 * Number(isBetterQuality))
+    largestCheck.disabled = isBetterQuality
+    largestClusterGroup.style.opacity = opacity
+    bubbleCheck.disabled = isBetterQuality
+    bubbleGroup.style.opacity = opacity
+    closeMM.disabled = isBetterQuality
+    closeGroup.style.opacity = opacity
+  }
   applyBtn.onclick = async function () {
+    const isBetterQuality = Boolean(Number(qualitySelect.value))
+    const startTime = performance.now()
+    if (isBetterQuality)
+      await applyQuality()
+    else
+      await applyFaster()
+    console.log(`Execution time: ${Math.round(performance.now() - startTime)} ms`)
+  }
+  async function applyFaster() {
+    startTime = Date.now()
+    const niiBuffer = await nv1.saveImage({volumeByIndex: nv1.volumes.length - 1}).buffer
+    const niiFile = new File([niiBuffer], 'image.nii')
+    let processor = niimath.image(niiFile)
+    loadingCircle.classList.remove('hidden')
+    //mesh with specified isosurface
+    const isoValue = Number(isoNumber.value)
+    //const largestCheckValue = largestCheck.checked
+    let reduce = Math.min(Math.max(Number(shrinkPct.value) / 100, 0.01), 1)
+    let hollowSz = Number(hollowSelect.value )
+    let closeSz = Number(closeMM.value)
+    const pixDim = Math.min(Math.min(nv1.volumes[0].hdr.pixDims[1],nv1.volumes[0].hdr.pixDims[2]), nv1.volumes[0].hdr.pixDims[3])
+    if ((pixDim < 0.2) && ((hollowSz !== 0) || (closeSz !== 0))) {
+      hollowSz *= pixDim
+      closeSz *= pixDim
+      console.log('Very small pixels, scaling hollow and close values by ', pixDim)
+    }
+    if (hollowSz < 0) {
+      processor = processor.hollow(0.5, hollowSz)
+    }
+    if ((isFinite(closeSz)) && (closeSz > 0)){
+      processor = processor.close(isoValue, closeSz, 2 * closeSz)
+    }
+    processor = processor.mesh({
+      i: isoValue,
+      l: largestCheck.checked ? 1 : 0,
+      r: reduce,
+      b: bubbleCheck.checked ? 1 : 0
+    })
+    console.log('niimath operation', processor.commands)
+    const retBlob = await processor.run('test.mz3')
+    const arrayBuffer = await retBlob.arrayBuffer()
+    loadingCircle.classList.add('hidden')
+    if (nv1.meshes.length > 0)
+      nv1.removeMesh(nv1.meshes[0])
+    await nv1.loadFromArrayBuffer(arrayBuffer, 'test.mz3')
+  }
+  async function applyQuality() {
     const volIdx = nv1.volumes.length - 1
     let hdr = nv1.volumes[volIdx].hdr2RAS()
-    let img = nv1.volumes[volIdx].img2RAS()
+    console.log(hdr.dims)
+    let img = nv1.volumes[volIdx].img2RAS().slice()
     // itk ignores scale slope and intercept, so convert isosurface threshold to raw units
     let isoValue = Number(isoNumber.value)
     let hollowInt = Number(hollowSelect.value )
@@ -102,7 +162,6 @@ async function main() {
       const niiBuffer = await nv1.saveImage({volumeByIndex: nv1.volumes.length - 1}).buffer
       const niiBlob = new Blob([niiBuffer], { type: 'application/octet-stream' })
       const niiFile = new File([niiBlob], 'input.nii')
-      niimath.setOutputDataType('input') // call before setting image since this is passed to the image constructor
       let image = niimath.image(niiFile)
       image = image.gz(0)
       image = image.ras()
@@ -121,7 +180,7 @@ async function main() {
       hdr.scl_slope = 1
     }
     // itk-wasm ignores rescale slope and intercept
-    const isoValueRaw =  (isoValue - hdr.scl_inter) / hdr.scl_slope
+    let isoValueRaw =  (isoValue - hdr.scl_inter) / hdr.scl_slope
     // check isosurface is not too bright or dark
     let mn = img[0]
     let mx = img[0]
@@ -129,6 +188,7 @@ async function main() {
         mn = Math.min(mn, img[i])
         mx = Math.max(mx, img[i])
     }
+    const mnRaw = mn
     mn = (hdr.scl_slope * mn) + hdr.scl_inter
     mx = (hdr.scl_slope * mx) + hdr.scl_inter
     if ((isoValue > mx) || (isoValue < mn)) {
@@ -139,6 +199,48 @@ async function main() {
         return
     }
     console.log(`threshold ${isoValue} intensity range ${mn}..${mx}`)
+    if (mnRaw) {
+      // ITK-WASM can not handle negative voxels
+      //   error: "signed_index_t(result) >= 0."
+      for (let i = 0; i < img.length; i++)
+        img[i] -= mnRaw
+      isoValueRaw -= mnRaw
+      console.log(`image intensity translated to remove negative voxels`)
+    }
+    // ITK-WASM has issues when the edge voxels exceed threshold 
+    function zeroBorders(img, dims) {
+      const [ndim, nx, ny, nz] = dims; // Extract dimensions
+      if ((nx < 3) || (ny < 3) || (nz < 3))
+        return
+      // Zero out the first and last slices
+      const nxy = nx * ny
+      const lastSliceOffset = (nz - 1) * nxy
+      for (let i = 0; i < nxy; i++) {
+          img[i] = 0
+          img[i+lastSliceOffset] = 0
+      }
+      // zero first and last columns
+      let sliceOffset = 0
+      for (let z = 0; z < nz; z++) {
+        for (let y = 0; y < ny; y++) {
+          img[sliceOffset] = 0
+          img[sliceOffset + nx - 1] = 0
+          sliceOffset += nx
+        } //for y
+      } // for z
+      // zero first and last row
+      sliceOffset = 0
+      const lastRowOffset = nx * (ny - 1)
+      for (let z = 0; z < nz; z++) {
+        for (let x = 0; x < nx; x++) {
+          img[sliceOffset + x] = 0
+          img[sliceOffset + x + lastRowOffset] = 0
+        } //for y
+        sliceOffset += nxy
+      } // for z
+      return img;
+    } // zeroBorders()
+    zeroBorders(img, hdr.dims)
     // next 2 lines currently ignored - required if future itkwasm uses rescale parameters
     hdr.scl_slope = 1
     hdr.scl_inter = 0
@@ -170,6 +272,7 @@ async function main() {
     meshProcessingMsg.textContent = "Smoothing and remeshing"
     const smooth = parseInt(smoothSlide.value)
     const shrink = parseFloat(shrinkPct.value)
+    console.log(`smoothing iterations ${smooth} shrink percent ${shrink}`)
     const { outputMesh: smoothedMesh } = await smoothRemesh(largestOnly, {
       newtonIterations: smooth,
       numberPoints: shrink,
@@ -188,9 +291,15 @@ async function main() {
     )
     await nv1.loadFromArrayBuffer(meshBuffer, "trefoil.mz3")
   }
-
   visibleCheck.onchange = function () {
     nv1.setMeshProperty(nv1.meshes[0].id, "visible", this.checked)
+  }
+  darkCheck.onchange = function () {
+    if (this.checked)
+      nv1.opts.backColor = [0, 0, 0, 1]
+    else
+      nv1.opts.backColor = [1, 1, 1, 1]
+    nv1.drawScene()
   }
   function handleLocationChange(data) {
     document.getElementById("location").innerHTML =
@@ -233,6 +342,7 @@ async function main() {
     const str = `Image has ${nv1.volumes[0].dims[1]}×${nv1.volumes[0].dims[2]}×${nv1.volumes[0].dims[3]} voxels`
     document.getElementById("location").innerHTML = str
     nv1.setSliceType(nv1.sliceTypeMultiplanar)
+    nv1.setPan2Dxyzmm([0, 0, 0, 1])
     console.log(
       "ct2print 20241218 intensity range " +
         isoLabel.textContent +
@@ -246,8 +356,8 @@ async function main() {
   nv1.opts.multiplanarForceRender = true
   nv1.opts.yoke3Dto2DZoom = true
   nv1.setInterpolation(true)
-  await nv1.loadVolumes([{ url: "./tinyT1.nii.gz" }])
-  console.log(niimath)
+  await nv1.loadVolumes([{ url: "./Iguana.nii.gz"}])
+  qualitySelect.onchange()
 }
 
 main()
