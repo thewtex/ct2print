@@ -36,7 +36,6 @@ async function main() {
   await niimath.init()
   niimath.setOutputDataType('input') // call before setting image since this is passed to the image constructor
   const loadingCircle = document.getElementById("loadingCircle")
-  let startTime = null
   saveBtn.onclick = function () {
     if (nv1.meshes.length < 1) {
       window.alert("No mesh open for saving. Use 'Create Mesh'.")
@@ -112,7 +111,6 @@ async function main() {
     console.log(`Execution time: ${Math.round(performance.now() - startTime)} ms`)
   }
   async function applyFaster() {
-    startTime = Date.now()
     const niiBuffer = await nv1.saveImage({volumeByIndex: nv1.volumes.length - 1}).buffer
     const niiFile = new File([niiBuffer], 'image.nii')
     let processor = niimath.image(niiFile)
@@ -209,7 +207,7 @@ async function main() {
     }
     // ITK-WASM has issues when the edge voxels exceed threshold 
     function zeroBorders(img, dims) {
-      const [ndim, nx, ny, nz] = dims; // Extract dimensions
+      const [ndim, nx, ny, nz] = dims // Extract dimensions
       if ((nx < 3) || (ny < 3) || (nz < 3))
         return
       // Zero out the first and last slices
@@ -312,11 +310,9 @@ async function main() {
     let str = `Mesh has ${nv1.meshes[0].pts.length / 3} vertices and ${
       nv1.meshes[0].tris.length / 3
     } triangles`
-    if (startTime) str += ` ${Date.now() - startTime}ms`
     document.getElementById("location").innerHTML = str
     console.log(str)
     shaderSelect.onchange()
-    startTime = null
   }
   const defaults = {
     onMeshLoaded: handleMeshLoaded,
