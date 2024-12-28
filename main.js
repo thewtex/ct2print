@@ -197,13 +197,15 @@ async function main() {
         return
     }
     console.log(`threshold ${isoValue} intensity range ${mn}..${mx}`)
-    if (mnRaw < 0) {
+    if (mnRaw !== 0) {
       // ITK-WASM can not handle negative voxels
       //   error: "signed_index_t(result) >= 0."
       for (let i = 0; i < img.length; i++)
         img[i] -= mnRaw
       isoValueRaw -= mnRaw
       console.log(`image intensity translated to remove negative voxels`)
+      //n.b. for fix this specific error, we could only apply this correction if mnRaw < 0
+      // however the subsequent zero borders assumes darkest voxel is zero
     }
     // ITK-WASM has issues when the edge voxels exceed threshold 
     function zeroBorders(img, dims) {
