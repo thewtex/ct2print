@@ -197,7 +197,7 @@ async function main() {
         return
     }
     console.log(`threshold ${isoValue} intensity range ${mn}..${mx}`)
-    if (mnRaw) {
+    if (mnRaw < 0) {
       // ITK-WASM can not handle negative voxels
       //   error: "signed_index_t(result) >= 0."
       for (let i = 0; i < img.length; i++)
