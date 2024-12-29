@@ -94,8 +94,6 @@ async function main() {
   qualitySelect.onchange = function () {
     const isBetterQuality = Boolean(Number(qualitySelect.value))
     const opacity = 1.0 - (0.5 * Number(isBetterQuality))
-    largestCheck.disabled = isBetterQuality
-    largestClusterGroup.style.opacity = opacity
     bubbleCheck.disabled = isBetterQuality
     bubbleGroup.style.opacity = opacity
     closeMM.disabled = isBetterQuality
@@ -254,14 +252,18 @@ async function main() {
     const { outputMesh: repairedMesh } = await repair(mesh, {
       maximumHoleArea: 50.0,
     })
-    meshProcessingMsg.textContent = "Keep largest mesh component"
-    const { outputMesh: largestOnly } = await keepLargestComponent(
-      repairedMesh
-    )
-    while (nv1.meshes.length > 0) {
-      nv1.removeMesh(nv1.meshes[0])
+    let initialMesh = repairedMesh
+    if (largestCheck.checked) {
+      console.log('Only retaining largest mesh')
+      meshProcessingMsg.textContent = "Keep largest mesh component"
+      const { outputMesh: initialMesh } = await keepLargestComponent(
+        repairedMesh
+      )
+      while (nv1.meshes.length > 0) {
+        nv1.removeMesh(nv1.meshes[0])
+      }
     }
-    const initialNiiMesh = iwm2meshCore(largestOnly)
+    const initialNiiMesh = iwm2meshCore(initialMesh)
     const initialNiiMeshBuffer = NVMeshUtilities.createMZ3(
       initialNiiMesh.positions,
       initialNiiMesh.indices,
@@ -273,7 +275,7 @@ async function main() {
     const smooth = parseInt(smoothSlide.value)
     const shrink = parseFloat(shrinkPct.value)
     console.log(`smoothing iterations ${smooth} shrink percent ${shrink}`)
-    const { outputMesh: smoothedMesh } = await smoothRemesh(largestOnly, {
+    const { outputMesh: smoothedMesh } = await smoothRemesh(initialMesh, {
       newtonIterations: smooth,
       numberPoints: shrink,
     })
