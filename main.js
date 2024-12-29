@@ -259,9 +259,9 @@ async function main() {
       const { outputMesh: initialMesh } = await keepLargestComponent(
         repairedMesh
       )
-      while (nv1.meshes.length > 0) {
-        nv1.removeMesh(nv1.meshes[0])
-      }
+    }
+    while (nv1.meshes.length > 0) {
+      nv1.removeMesh(nv1.meshes[0])
     }
     const initialNiiMesh = iwm2meshCore(initialMesh)
     const initialNiiMeshBuffer = NVMeshUtilities.createMZ3(
